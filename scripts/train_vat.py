@@ -561,12 +561,13 @@ def save_training_checkpoint(
     if distributed_state.is_main_process:
         # Save LoRA adapter
         
-        
+        vision_backbone_model = vision_backbone.module if hasattr(vision_backbone, "module") else vision_backbone
+
         if cfg.baseline:
-            torch.save(vision_backbone.module.vit.state_dict(), checkpoint_dir / f"vit--{checkpoint_name_suffix}")
-            torch.save(vision_backbone.module.featurizer.state_dict(), checkpoint_dir / f"vat--{checkpoint_name_suffix}")
+            torch.save(vision_backbone_model.vit.state_dict(), checkpoint_dir / f"vit--{checkpoint_name_suffix}")
+            torch.save(vision_backbone_model.featurizer.state_dict(), checkpoint_dir / f"vat--{checkpoint_name_suffix}")
         else:
-            torch.save(vision_backbone.module.featurizer.state_dict(), checkpoint_dir / f"vision_backbone--{checkpoint_name_suffix}")
+            torch.save(vision_backbone_model.featurizer.state_dict(), checkpoint_dir / f"vision_backbone--{checkpoint_name_suffix}")
         # Save other components
         if cfg.use_proprio and proprio_projector is not None:
             torch.save(proprio_projector.module.state_dict(), checkpoint_dir / f"proprio_projector--{checkpoint_name_suffix}")
@@ -843,8 +844,15 @@ def finetune(cfg: FinetuneConfig) -> None:
 
     # Wrap VLA with DDP
     
-    vision_backbone = wrap_ddp(vision_backbone, device_id, find_unused=True)
-   
+    #vision_backbone = wrap_ddp(vision_backbone, device_id, find_unused=True)
+
+   # 只有当模型有参数需要训练时，才启用 DDP 同步
+    if any(p.requires_grad for p in vision_backbone.parameters()):
+        vision_backbone = wrap_ddp(vision_backbone, device_id, find_unused=True)
+
+    # === 获取底层模型对象（兼容 DDP 和非 DDP 模式）===
+    vision_backbone_model = vision_backbone.module if hasattr(vision_backbone, "module") else vision_backbone
+    # ========================================================
 
     # If applicable, instantiate proprio projector
     if cfg.use_proprio:
@@ -863,7 +871,7 @@ def finetune(cfg: FinetuneConfig) -> None:
             "action_head",
             cfg,
             device_id,
-            {"input_dim": vision_backbone.module.embed_dim, "hidden_dim": vision_backbone.module.embed_dim, "action_dim": cfg.action_dim_input},
+            {"input_dim": vision_backbone_model.embed_dim, "hidden_dim": vision_backbone_model.embed_dim, "action_dim": cfg.action_dim_input},
             to_bf16=False,
         
         )
@@ -876,15 +884,15 @@ def finetune(cfg: FinetuneConfig) -> None:
             cfg,
             device_id,
             {
-                "input_dim": vision_backbone.module.embed_dim,
-                "hidden_dim": vision_backbone.module.embed_dim,
+                "input_dim": vision_backbone_model.embed_dim,
+                "hidden_dim": vision_backbone_model.embed_dim,
                 "action_dim": cfg.action_dim_input,
                 "num_diffusion_steps": cfg.num_diffusion_steps,
             },
             to_bf16=True,
         )
         noisy_action_projector = init_module(
-            NoisyActionProjector, "noisy_action_projector", cfg, device_id, {"llm_dim": vision_backbone.module.embed_dim}
+            NoisyActionProjector, "noisy_action_projector", cfg, device_id, {"llm_dim": vision_backbone_model.embed_dim}
         )
 
     if cfg.resume:

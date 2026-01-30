@@ -1,20 +1,20 @@
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-torchrun --standalone --nnodes 1 --nproc-per-node 4 vat/scripts/train_vat.py \
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+torchrun --standalone --nnodes 1 --nproc-per-node 8 scripts/train_vat.py \
   --data_root_dir ./libero_rlds \
   --dataset_name libero_10_no_noops \
   --run_root_dir ./ckpt/ \
   --use_l1_regression True \
   --use_diffusion False \
-  --batch_size 128 \
+  --batch_size 8 \
+  --grad_accumulation_steps 16 \
   --learning_rate 2e-5 \
   --save_latest_checkpoint_only False \
   --image_aug True \
   --wandb_entity "" \
   --wandb_project "" \
-  --use_lora False \
   --action_dim_input 7 \
   --action_chunk 8 \
-  --visionbackbone_requiregrad True \
+  --visionbackbone_requiregrad False \
   --shuffle_buffer_size 5000 \
   --run_id_note train_vat \
   --epochs 100 \
